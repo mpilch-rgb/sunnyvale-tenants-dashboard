@@ -55,29 +55,42 @@
       }
 
       async function loadCsv() {
-        const res = await fetch("./tenants.csv", { cache: "no-store" });
-        if (!res.ok) throw new Error("Could not load tenants.csv");
-        const text = await res.text();
+  const res = await fetch("./tenants.csv", { cache: "no-store" });
+  if (!res.ok) throw new Error("Could not load tenants.csv");
+  const text = await res.text();
 
-        const lines = text.trim().split(/\r?\n/);
-        const header = lines.shift().split(",").map(s => s.trim().toLowerCase());
-        const tenantIdx = header.indexOf("tenant");
-        const sfIdx = header.indexOf("sf");
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines.shift().split(",").map(s => s.trim().toLowerCase());
+  const tenantIdx = header.indexOf("tenant");
+  const sfIdx = header.indexOf("sf");
 
-        if (tenantIdx === -1 || sfIdx === -1) {
-          throw new Error("CSV must have columns: tenant,sf");
-        }
+  if (tenantIdx === -1 || sfIdx === -1) {
+    throw new Error("CSV must have columns: tenant,sf");
+  }
 
-        const rows = lines
-          .map(line => line.split(","))
-          .map(parts => ({
-            tenant: (parts[tenantIdx] || "").trim(),
-            sf: cleanNumber(parts[sfIdx])
-          }))
-          .filter(r => r.tenant && r.sf > 0);
+  const grouped = {};
 
-        return rows;
-      }
+  lines.forEach(line => {
+    const parts = line.split(",");
+    const tenantRaw = (parts[tenantIdx] || "").trim();
+    const sf = Number(String(parts[sfIdx]).replace(/[^0-9.]/g, "")) || 0;
+
+    if (!tenantRaw || sf <= 0) return;
+
+    const tenant = tenantRaw.toUpperCase(); // normalize
+
+    if (!grouped[tenant]) {
+      grouped[tenant] = 0;
+    }
+
+    grouped[tenant] += sf;
+  });
+
+  return Object.entries(grouped).map(([tenant, sf]) => ({
+    tenant,
+    sf
+  }));
+}
 
       function formatInt(n) {
         return Math.round(n).toLocaleString();
