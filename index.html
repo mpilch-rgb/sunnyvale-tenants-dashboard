@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sunnyvale Top Tenants</title>
+    <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f6f7fb; }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 28px; }
+      .card { background: white; border-radius: 18px; box-shadow: 0 8px 30px rgba(0,0,0,.08); padding: 22px; }
+      h1 { margin: 0 0 10px 0; font-size: 26px; }
+      .sub { color: #555; margin-bottom: 18px; }
+      .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0 14px 0; }
+      label { font-size: 14px; color: #333; }
+      select, input { padding: 8px 10px; border: 1px solid #ddd; border-radius: 10px; background: #fff; }
+      .note { color: #666; font-size: 13px; margin-top: 10px; }
+      #chart { width: 100%; height: 520px; }
+    </style>
+  </head>
+
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Sunnyvale Top Tenants</h1>
+        <div class="sub">Interactive pie chart from <code>tenants.csv</code>. Hover and click slices to explore.</div>
+
+        <div class="controls">
+          <label for="topN">Show top</label>
+          <select id="topN">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="9999">All</option>
+          </select>
+
+          <label for="minSf">Min SF</label>
+          <input id="minSf" type="number" value="0" min="0" step="1000" />
+
+          <span style="color:#999;">|</span>
+          <span style="font-size:14px;color:#333;">Total SF:</span>
+          <strong id="totalSf">0</strong>
+        </div>
+
+        <div id="chart"></div>
+        <div class="note">
+          Tip: If you want to hide tenant names, rename the column to codes or abbreviations before uploading.
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function cleanNumber(x) {
+        return Number(String(x).replace(/[^0-9.]/g, "")) || 0;
+      }
+
+      async function loadCsv() {
+        const res = await fetch("./tenants.csv", { cache: "no-store" });
+        if (!res.ok) throw new Error("Could not load tenants.csv");
+        const text = await res.text();
+
+        const lines = text.trim().split(/\r?\n/);
+        const header = lines.shift().split(",").map(s => s.trim().toLowerCase());
+        const tenantIdx = header.indexOf("tenant");
+        const sfIdx = header.indexOf("sf");
+
+        if (tenantIdx === -1 || sfIdx === -1) {
+          throw new Error("CSV must have columns: tenant,sf");
+        }
+
+        const rows = lines
+          .map(line => line.split(","))
+          .map(parts => ({
+            tenant: (parts[tenantIdx] || "").trim(),
+            sf: cleanNumber(parts[sfIdx])
+          }))
+          .filter(r => r.tenant && r.sf > 0);
+
+        return rows;
+      }
+
+      function formatInt(n) {
+        return Math.round(n).toLocaleString();
+      }
+
+      function render(rows) {
+        const topN = Number(document.getElementById("topN").value);
+        const minSf = Number(document.getElementById("minSf").value);
+
+        const filtered = rows
+          .filter(r => r.sf >= minSf)
+          .sort((a,b) => b.sf - a.sf);
+
+        const sliced = filtered.slice(0, topN);
+
+        const total = sliced.reduce((s,r) => s + r.sf, 0);
+        document.getElementById("totalSf").textContent = formatInt(total);
+
+        const labels = sliced.map(r => r.tenant);
+        const values = sliced.map(r => r.sf);
+
+        const data = [{
+          type: "pie",
+          labels,
+          values,
+          textinfo: "label+percent",
+          hovertemplate: "%{label}<br>%{value:,.0f} SF<br>%{percent}<extra></extra>",
+          sort: false
+        }];
+
+        const layout = {
+          margin: { t: 10, r: 10, b: 10, l: 10 },
+          height: 520,
+          paper_bgcolor: "rgba(0,0,0,0)",
+          plot_bgcolor: "rgba(0,0,0,0)",
+          legend: { orientation: "h" }
+        };
+
+        Plotly.newPlot("chart", data, layout, { responsive: true, displayModeBar: true });
+      }
+
+      (async function init() {
+        try {
+          const rows = await loadCsv();
+          render(rows);
+
+          document.getElementById("topN").addEventListener("change", () => render(rows));
+          document.getElementById("minSf").addEventListener("input", () => render(rows));
+        } catch (e) {
+          document.getElementById("chart").innerHTML =
+            "<div style='padding:16px;color:#b00020;'>Error: " + e.message + "</div>";
+          console.error(e);
+        }
+      })();
+    </script>
+  </body>
+</html>
